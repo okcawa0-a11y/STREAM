@@ -9,7 +9,6 @@ const PORT = process.env.PORT || 4000;
 const filmsPath = path.join(__dirname, 'films.json');
 let filmsData = [];
 
-// Load dataset from films.json in the same directory
 function loadFilmsData() {
   try {
     if (fs.existsSync(filmsPath)) {
@@ -34,6 +33,18 @@ app.use(express.json());
 // Handle favicon request without errors
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
+// Fisher-Yates Shuffle Algorithm for randomizing posters on refresh
+function shuffleArray(array) {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = arr[i];
+    arr[i] = arr[j];
+    arr[j] = temp;
+  }
+  return arr;
+}
+
 // Helper: Extract unique genres
 function getUniqueGenres() {
   const genresSet = new Set();
@@ -45,7 +56,7 @@ function getUniqueGenres() {
   return Array.from(genresSet).sort();
 }
 
-// API: Get film list with search, genre filter, and sorting
+// API: Get film list with search, genre filter, and random/sorting logic
 app.get('/api/films', (req, res) => {
   let results = [...filmsData];
   const { q, genre, sort, quality } = req.query;
@@ -73,7 +84,7 @@ app.get('/api/films', (req, res) => {
     results = results.filter(f => f.quality === quality);
   }
 
-  // Sorting logic
+  // Sorting logic (Default behavior is Random Shuffle every refresh)
   if (sort === 'rating_desc') {
     results.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
   } else if (sort === 'votes_desc') {
@@ -82,6 +93,9 @@ app.get('/api/films', (req, res) => {
     results.sort((a, b) => (parseInt(b.year) || 0) - (parseInt(a.year) || 0));
   } else if (sort === 'title_asc') {
     results.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+  } else {
+    // Default or random: Shuffle array on every refresh
+    results = shuffleArray(results);
   }
 
   res.json(results);
@@ -165,6 +179,13 @@ app.get('/', (req, res) => {
       text-transform: uppercase;
     }
     .logo span { color: #ffffff; }
+
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
 
     .controls-group {
       display: flex;
@@ -365,8 +386,10 @@ app.get('/', (req, res) => {
     @media (max-width: 768px) {
       header { padding: 10px 14px; }
       .genre-bar-container, .main-content { padding-left: 14px; padding-right: 14px; }
-      .header-container { flex-direction: column; align-items: stretch; }
-      .controls-group { flex-wrap: wrap; }
+      .header-container { flex-direction: column; align-items: stretch; gap: 10px; }
+      .brand-row { width: 100%; display: flex; align-items: center; justify-content: space-between; }
+      .controls-group { flex-wrap: nowrap; width: 100%; max-width: 100%; gap: 8px; }
+      .select-input { max-width: 135px; font-size: 11px; padding: 8px 6px; }
       .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
     }
 
@@ -386,9 +409,12 @@ app.get('/', (req, res) => {
 
 <header>
   <div class="header-container">
-    <a href="/" class="logo">
-      NIME<span>STREAM</span>
-    </a>
+    <div class="brand-row">
+      <a href="/" class="logo">
+        NIME<span>STREAM</span>
+      </a>
+      <span class="count-pill" id="countPill">0 Film</span>
+    </div>
 
     <div class="controls-group">
       <div class="search-wrap">
@@ -402,8 +428,6 @@ app.get('/', (req, res) => {
         <option value="year_desc">Tahun Terbaru</option>
         <option value="title_asc">Abjad A-Z</option>
       </select>
-
-      <span class="count-pill" id="countPill">0 Film</span>
     </div>
   </div>
 </header>
@@ -499,6 +523,7 @@ function renderGrid(list) {
       var year = f.year || '-';
       var duration = f.duration || 'N/A';
       
+      // Direct redirect URL to original LK21 site
       var targetUrl = f.url || (f.servers && f.servers[0] ? f.servers[0].url : '#');
 
       var card = document.createElement('div');
