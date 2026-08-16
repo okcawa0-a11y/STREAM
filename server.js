@@ -5,7 +5,6 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Path to films.json file
 const filmsPath = path.join(__dirname, 'films.json');
 let filmsData = [];
 
@@ -25,15 +24,12 @@ function loadFilmsData() {
   }
 }
 
-// Initialize dataset
 loadFilmsData();
 
 app.use(express.json());
 
-// Handle favicon request without errors
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-// Fisher-Yates Shuffle Algorithm for randomizing posters on refresh
 function shuffleArray(array) {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -45,7 +41,6 @@ function shuffleArray(array) {
   return arr;
 }
 
-// Helper: Extract unique genres
 function getUniqueGenres() {
   const genresSet = new Set();
   filmsData.forEach(film => {
@@ -56,12 +51,10 @@ function getUniqueGenres() {
   return Array.from(genresSet).sort();
 }
 
-// API: Get film list with search, genre filter, and random/sorting logic
 app.get('/api/films', (req, res) => {
   let results = [...filmsData];
   const { q, genre, sort, quality } = req.query;
 
-  // Search filter
   if (q) {
     const query = q.toLowerCase().trim();
     results = results.filter(f =>
@@ -72,19 +65,16 @@ app.get('/api/films', (req, res) => {
     );
   }
 
-  // Genre filter
   if (genre && genre !== 'All') {
     results = results.filter(f =>
       f.genre && f.genre.toLowerCase().includes(genre.toLowerCase())
     );
   }
 
-  // Quality filter
   if (quality && quality !== 'All') {
     results = results.filter(f => f.quality === quality);
   }
 
-  // Sorting logic (Default behavior is Random Shuffle every refresh)
   if (sort === 'rating_desc') {
     results.sort((a, b) => (parseFloat(b.rating) || 0) - (parseFloat(a.rating) || 0));
   } else if (sort === 'votes_desc') {
@@ -94,26 +84,22 @@ app.get('/api/films', (req, res) => {
   } else if (sort === 'title_asc') {
     results.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
   } else {
-    // Default or random: Shuffle array on every refresh
     results = shuffleArray(results);
   }
 
   res.json(results);
 });
 
-// API: Film details by slug or ID
 app.get('/api/film/:slug', (req, res) => {
   const film = filmsData.find(f => f.slug === req.params.slug || f.id === req.params.slug);
   if (!film) return res.status(404).json({ error: 'Film not found' });
   res.json(film);
 });
 
-// API: Unique genres list
 app.get('/api/genres', (req, res) => {
   res.json(getUniqueGenres());
 });
 
-// Main Frontend Route - Ultra Lite Version (Zero heavy animations, Zero external fonts)
 app.get('/', (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="id">
@@ -121,16 +107,15 @@ app.get('/', (req, res) => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
   <title>NimeStream</title>
-  
   <style>
     :root {
-      --bg-color: #0b0c10;
-      --surface-color: #12141c;
-      --card-bg: #181a24;
-      --card-border: #232736;
+      --bg-color: #07080a;
+      --surface-color: #12151d;
+      --card-bg: #161922;
+      --card-border: #222634;
       --primary: #e50914;
       --primary-hover: #ff1e27;
-      --text-main: #f3f4f6;
+      --text-main: #f9fafb;
       --text-muted: #9ca3af;
       --star-color: #fbbf24;
     }
@@ -149,12 +134,14 @@ app.get('/', (req, res) => {
     }
 
     header {
-      background: var(--bg-color);
+      background: rgba(7, 8, 10, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid var(--card-border);
       position: sticky;
       top: 0;
       z-index: 100;
-      padding: 12px 24px;
+      padding: 16px 32px;
     }
 
     .header-container {
@@ -163,13 +150,13 @@ app.get('/', (req, res) => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 16px;
       flex-wrap: wrap;
     }
 
     .logo {
-      font-size: 20px;
-      font-weight: 800;
+      font-size: 22px;
+      font-weight: 900;
       color: var(--primary);
       text-decoration: none;
       letter-spacing: -0.5px;
@@ -184,13 +171,13 @@ app.get('/', (req, res) => {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 16px;
     }
 
     .controls-group {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 12px;
       flex: 1;
       max-width: 680px;
       justify-content: flex-end;
@@ -199,33 +186,39 @@ app.get('/', (req, res) => {
     .search-wrap {
       position: relative;
       flex: 1;
-      min-width: 160px;
+      min-width: 180px;
     }
     .search-input {
       width: 100%;
-      padding: 8px 12px;
+      padding: 10px 16px;
       background: var(--surface-color);
       border: 1px solid var(--card-border);
-      border-radius: 6px;
+      border-radius: 8px;
       color: var(--text-main);
       font-size: 13px;
       font-weight: 500;
       outline: none;
+      transition: all 0.2s ease;
     }
     .search-input:focus {
       border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.15);
     }
 
     .select-input {
       background: var(--surface-color);
       border: 1px solid var(--card-border);
       color: var(--text-main);
-      padding: 8px 10px;
-      border-radius: 6px;
+      padding: 10px 14px;
+      border-radius: 8px;
       font-size: 12px;
       font-weight: 600;
       outline: none;
       cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .select-input:hover {
+      border-color: var(--text-muted);
     }
 
     .count-pill {
@@ -233,41 +226,68 @@ app.get('/', (req, res) => {
       color: var(--text-muted);
       font-size: 12px;
       font-weight: 700;
-      padding: 7px 12px;
-      border-radius: 6px;
+      padding: 8px 14px;
+      border-radius: 8px;
       border: 1px solid var(--card-border);
       white-space: nowrap;
     }
 
     .genre-bar-container {
       max-width: 1400px;
-      margin: 10px auto 0;
-      padding: 0 24px;
+      margin: 16px auto 0;
+      padding: 0 32px;
       width: 100%;
     }
     .genre-bar {
       display: flex;
-      gap: 6px;
+      gap: 8px;
       overflow-x: auto;
-      padding-bottom: 6px;
+      padding-bottom: 8px;
       scrollbar-width: none;
     }
     .genre-bar::-webkit-scrollbar { display: none; }
+
+    /* PC Scrollbar Styles */
+    @media (min-width: 769px) {
+      .genre-bar {
+        scrollbar-width: thin;
+        scrollbar-color: #4b5563 #12151d;
+        padding-bottom: 12px;
+      }
+      .genre-bar::-webkit-scrollbar {
+        display: block;
+        height: 6px;
+      }
+      .genre-bar::-webkit-scrollbar-track {
+        background: #12151d;
+        border-radius: 3px;
+      }
+      .genre-bar::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 3px;
+      }
+      .genre-bar::-webkit-scrollbar-thumb:hover {
+        background: var(--primary);
+      }
+    }
+
     .genre-chip {
       background: var(--surface-color);
       color: var(--text-muted);
       font-size: 12px;
       font-weight: 600;
-      padding: 6px 14px;
-      border-radius: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
       border: 1px solid var(--card-border);
       cursor: pointer;
       white-space: nowrap;
+      transition: all 0.2s ease;
     }
     .genre-chip:hover, .genre-chip.active {
       background: var(--primary);
       color: #ffffff;
       border-color: var(--primary);
+      transform: translateY(-1px);
     }
 
     .main-content {
@@ -275,19 +295,19 @@ app.get('/', (req, res) => {
       max-width: 1400px;
       width: 100%;
       margin: 0 auto;
-      padding: 16px 24px;
+      padding: 24px 32px;
     }
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 20px;
     }
 
     .card {
       background: var(--card-bg);
       border: 1px solid var(--card-border);
-      border-radius: 8px;
+      border-radius: 12px;
       overflow: hidden;
       cursor: pointer;
       position: relative;
@@ -296,12 +316,14 @@ app.get('/', (req, res) => {
       text-decoration: none;
       color: inherit;
       outline: none;
+      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
     }
     .card:hover {
       border-color: var(--primary);
+      transform: translateY(-4px);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
     }
     
-    /* STB TV Remote Focus Effect */
     .card:focus, .card:focus-visible {
       border-color: var(--primary);
       box-shadow: 0 0 0 3px var(--primary);
@@ -312,56 +334,66 @@ app.get('/', (req, res) => {
       position: relative;
       width: 100%;
       aspect-ratio: 2/3;
-      background: #12141c;
+      background: #12151d;
       overflow: hidden;
     }
     .card-poster img {
       width: 100%;
       height: 100%;
       object-fit: cover;
+      transition: transform 0.3s ease;
+    }
+    .card:hover .card-poster img {
+      transform: scale(1.03);
     }
 
     .badge-quality {
       position: absolute;
-      top: 6px;
-      left: 6px;
-      background: rgba(0, 0, 0, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      top: 8px;
+      left: 8px;
+      background: rgba(11, 12, 16, 0.85);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: #38bdf8;
-      font-size: 9px;
+      font-size: 10px;
       font-weight: 800;
-      padding: 2px 5px;
-      border-radius: 3px;
+      padding: 3px 7px;
+      border-radius: 4px;
       text-transform: uppercase;
     }
     .badge-rating {
       position: absolute;
-      top: 6px;
-      right: 6px;
-      background: rgba(0, 0, 0, 0.85);
+      top: 8px;
+      right: 8px;
+      background: rgba(11, 12, 16, 0.85);
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       color: var(--star-color);
-      font-size: 10px;
+      font-size: 11px;
       font-weight: 800;
-      padding: 2px 6px;
-      border-radius: 3px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
     }
 
     .card-info {
-      padding: 10px;
+      padding: 12px;
       display: flex;
       flex-direction: column;
       flex: 1;
     }
     .card-title {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
       color: var(--text-main);
-      line-height: 1.35;
+      line-height: 1.4;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-      margin-bottom: 6px;
+      margin-bottom: 8px;
     }
     .card-meta {
       font-size: 11px;
@@ -375,27 +407,26 @@ app.get('/', (req, res) => {
 
     .empty-state {
       text-align: center;
-      padding: 60px 20px;
+      padding: 80px 20px;
       color: var(--text-muted);
       font-weight: 600;
       font-size: 14px;
       grid-column: 1 / -1;
     }
 
-    /* Responsive for HP, Tablet, & TV */
     @media (max-width: 768px) {
-      header { padding: 10px 14px; }
-      .genre-bar-container, .main-content { padding-left: 14px; padding-right: 14px; }
-      .header-container { flex-direction: column; align-items: stretch; gap: 10px; }
+      header { padding: 12px 16px; }
+      .genre-bar-container, .main-content { padding-left: 16px; padding-right: 16px; }
+      .header-container { flex-direction: column; align-items: stretch; gap: 12px; }
       .brand-row { width: 100%; display: flex; align-items: center; justify-content: space-between; }
       .controls-group { flex-wrap: nowrap; width: 100%; max-width: 100%; gap: 8px; }
-      .select-input { max-width: 135px; font-size: 11px; padding: 8px 6px; }
-      .grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+      .select-input { max-width: 140px; font-size: 11px; padding: 8px 8px; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
     }
 
     @media (max-width: 480px) {
-      .grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
-      .card-info { padding: 6px; }
+      .grid { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 8px; }
+      .card-info { padding: 8px; }
       .card-title { font-size: 11px; }
       .card-meta { font-size: 10px; }
     }
@@ -503,7 +534,6 @@ async function fetchAndRender() {
   }
 }
 
-// Render grid using DOM elements for safety & TV remote STB focus support
 function renderGrid(list) {
   var grid = document.getElementById('grid');
   document.getElementById('countPill').textContent = (list ? list.length : 0) + ' Film';
@@ -523,7 +553,6 @@ function renderGrid(list) {
       var year = f.year || '-';
       var duration = f.duration || 'N/A';
       
-      // Direct redirect URL to original LK21 site
       var targetUrl = f.url || (f.servers && f.servers[0] ? f.servers[0].url : '#');
 
       var card = document.createElement('div');
@@ -532,14 +561,12 @@ function renderGrid(list) {
       card.setAttribute('role', 'button');
       card.setAttribute('aria-label', f.title || 'Film');
 
-      // Direct Redirect on Click
       card.onclick = function() {
         if (targetUrl && targetUrl !== '#') {
           window.open(targetUrl, '_blank', 'noopener,noreferrer');
         }
       };
 
-      // TV Remote & Keyboard Navigation
       card.onkeydown = function(e) {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -549,7 +576,6 @@ function renderGrid(list) {
         }
       };
 
-      // Auto scroll focused element into view on STB D-Pad navigation
       card.onfocus = function() {
         card.scrollIntoView({ behavior: 'auto', block: 'nearest' });
       };
@@ -613,7 +639,6 @@ init();
 </html>`);
 });
 
-// Start Express Server
 app.listen(PORT, () => {
   console.log('[SERVER] NimeStream Server running on http://localhost:' + PORT);
   console.log('[API] Endpoints available:');
