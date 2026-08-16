@@ -4,91 +4,57 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
-
 const filmsPath = path.join(__dirname, 'films.json');
-let filmsData = [];
 
-// =====================================================
-// PERBAIKAN 1: FILTER SAAT LOAD DATA
-// =====================================================
+let filmsCache = [];
+let genresCache = [];
+let qualitiesCache = [];
+
 function loadFilmsData() {
   try {
     if (fs.existsSync(filmsPath)) {
       const rawData = fs.readFileSync(filmsPath, 'utf8');
       const allFilms = JSON.parse(rawData);
       
-      // Filter: Hapus film aneh (redirect/drama) saat pertama kali dimuat
-      filmsData = allFilms.filter(film => {
+      const banned = ['nontondrama', 'dialihkan ke', 'redirect', 'house of the dragon', 'episode', 'season'];
+      
+      filmsCache = allFilms.filter(film => {
         const check = (film.title + film.slug + (film.description || '')).toLowerCase();
-        
-        // Kata-kata yang menandakan redirect/drama yang harus dihapus
-        const bannedKeywords = [
-          'nontondrama', 
-          'dialihkan ke', 
-          'redirect', 
-          'house of the dragon',
-          'episode',
-          'season'
-        ];
-        
-        for (let keyword of bannedKeywords) {
-          if (check.includes(keyword)) return false;
+        for (let i = 0; i < banned.length; i++) {
+          if (check.includes(banned[i])) return false;
         }
         return true;
       });
 
-      console.log('[INFO] Loaded ' + filmsData.length + ' films from films.json (filtered)');
-      console.log('[INFO] Removed ' + (allFilms.length - filmsData.length) + ' redirect/drama entries.');
-    } else {
-      console.log('[WARN] films.json not found in directory');
-      filmsData = [];
+      const gSet = new Set();
+      const qSet = new Set();
+      for (let i = 0; i < filmsCache.length; i++) {
+        const f = filmsCache[i];
+        if (f.genre && f.genre !== 'Unknown') {
+          const parts = f.genre.split(',');
+          for (let j = 0; j < parts.length; j++) gSet.add(parts[j].trim());
+        }
+        if (f.quality && f.quality !== 'Unknown') qSet.add(f.quality.trim());
+      }
+      genresCache = Array.from(gSet).sort();
+      qualitiesCache = Array.from(qSet).sort();
     }
   } catch (err) {
-    console.error('[ERROR] Failed to load films.json:', err.message);
-    filmsData = [];
+    filmsCache = [];
   }
 }
 
 loadFilmsData();
 
 app.use(express.json());
-
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-function shuffleArray(array) {
-  const arr = [...array];
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const temp = arr[i];
-    arr[i] = arr[j];
-    arr[j] = temp;
-  }
-  return arr;
-}
-
-function getUniqueGenres() {
-  const genresSet = new Set();
-  filmsData.forEach(film => {
-    if (film.genre && film.genre !== 'Unknown') {
-      film.genre.split(',').forEach(g => genresSet.add(g.trim()));
-    }
-  });
-  return Array.from(genresSet).sort();
-}
-
-function getUniqueQualities() {
-  const qualitiesSet = new Set();
-  filmsData.forEach(film => {
-    if (film.quality && film.quality !== 'Unknown') {
-      qualitiesSet.add(film.quality.trim());
-    }
-  });
-  return Array.from(qualitiesSet).sort();
-}
+app.get('/api/genres', (req, res) => res.json(genresCache));
+app.get('/api/qualities', (req, res) => res.json(qualitiesCache));
 
 app.get('/api/films', (req, res) => {
-  let results = [...filmsData];
-  const { q, genre, sort, quality } = req.query;
+  const { q, genre, sort, quality, page = 1, limit = 20 } = req.query;
+  let results = [...filmsCache];
 
   if (q) {
     const query = q.toLowerCase().trim();
@@ -101,9 +67,7 @@ app.get('/api/films', (req, res) => {
   }
 
   if (genre && genre !== 'All') {
-    results = results.filter(f =>
-      f.genre && f.genre.toLowerCase().includes(genre.toLowerCase())
-    );
+    results = results.filter(f => f.genre && f.genre.toLowerCase().includes(genre.toLowerCase()));
   }
 
   if (quality && quality !== 'All') {
@@ -119,24 +83,22 @@ app.get('/api/films', (req, res) => {
   } else if (sort === 'title_asc') {
     results.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
   } else {
-    results = shuffleArray(results);
+    results.sort(() => Math.random() - 0.5);
   }
 
-  res.json(results);
-});
-
-app.get('/api/film/:slug', (req, res) => {
-  const film = filmsData.find(f => f.slug === req.params.slug || f.id === req.params.slug);
-  if (!film) return res.status(404).json({ error: 'Film not found' });
-  res.json(film);
-});
-
-app.get('/api/genres', (req, res) => {
-  res.json(getUniqueGenres());
-});
-
-app.get('/api/qualities', (req, res) => {
-  res.json(getUniqueQualities());
+  const p = parseInt(page) || 1;
+  const l = parseInt(limit) || 20;
+  const totalItems = results.length;
+  const totalPages = Math.ceil(totalItems / l) || 1;
+  const startIndex = (p - 1) * l;
+  const endIndex = p * l;
+  
+  res.json({
+    data: results.slice(startIndex, endIndex),
+    currentPage: p,
+    totalPages: totalPages,
+    totalItems: totalItems
+  });
 });
 
 app.get('/', (req, res) => {
@@ -144,886 +106,289 @@ app.get('/', (req, res) => {
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-  <title>NimeStream</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NimeLite - Ultra Turbo Lite</title>
   <style>
     :root {
-      --bg-color: #07080a;
-      --surface-color: #12151d;
-      --card-bg: #161922;
-      --card-border: #222634;
+      --bg: #000;
+      --surface: #111;
+      --card: #161616;
+      --border: #222;
       --primary: #e50914;
-      --primary-hover: #ff1e27;
-      --text-main: #f9fafb;
-      --text-muted: #9ca3af;
-      --star-color: #fbbf24;
-      --overlay-bg: rgba(4, 5, 7, 0.82);
+      --text: #fff;
+      --muted: #999;
+      --star: #fbbf24;
     }
-
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { background: var(--bg); color: var(--text); font-family: sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+    header { background: #000; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; padding: 12px 20px; }
+    .h-container { max-width: 1250px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .logo { font-size: 18px; font-weight: 900; color: var(--primary); text-decoration: none; text-transform: uppercase; }
+    .logo span { color: #fff; }
+    .counter { background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 10px; font-weight: bold; padding: 3px 8px; border-radius: 4px; }
+    .controls { display: flex; align-items: center; gap: 6px; flex: 1; max-width: 550px; justify-content: flex-end; }
+    .search-input, .select-input { padding: 7px 10px; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; color: #fff; font-size: 11px; outline: none; cursor: pointer; }
+    .search-input { flex: 1; }
+    .search-input:focus, .select-input:focus { border-color: var(--primary); }
     
-    body {
-      background-color: var(--bg-color);
-      color: var(--text-main);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow-x: hidden;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    header {
-      background: rgba(7, 8, 10, 0.85);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--card-border);
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      padding: 16px 32px;
-    }
-
-    .header-container {
-      max-width: 1400px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      flex-wrap: wrap;
-    }
-
-    .logo {
-      font-size: 22px;
-      font-weight: 900;
-      color: var(--primary);
-      text-decoration: none;
-      letter-spacing: -0.5px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      text-transform: uppercase;
-    }
-    .logo span { color: #ffffff; }
-
-    .brand-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-    }
-
-    .controls-group {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex: 1;
-      max-width: 760px;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-    }
-
-    .search-wrap {
-      position: relative;
-      flex: 1;
-      min-width: 180px;
-    }
-    .search-input {
-      width: 100%;
-      padding: 10px 16px;
-      background: var(--surface-color);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      color: var(--text-main);
-      font-size: 13px;
-      font-weight: 500;
-      outline: none;
-      transition: all 0.2s ease;
-    }
-    .search-input:focus {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(229, 9, 20, 0.15);
-    }
-
-    .select-input {
-      background: var(--surface-color);
-      border: 1px solid var(--card-border);
-      color: var(--text-main);
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      outline: none;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .select-input:hover {
-      border-color: var(--text-muted);
-    }
-
-    .count-pill {
-      background: var(--surface-color);
-      color: var(--text-muted);
-      font-size: 12px;
-      font-weight: 700;
-      padding: 8px 14px;
-      border-radius: 8px;
-      border: 1px solid var(--card-border);
-      white-space: nowrap;
-    }
-
-    .genre-bar-container {
-      max-width: 1400px;
-      margin: 16px auto 0;
-      padding: 0 32px;
-      width: 100%;
-    }
-    .genre-bar {
-      display: flex;
-      gap: 8px;
-      overflow-x: auto;
-      padding-bottom: 8px;
-      scrollbar-width: none;
-    }
-    .genre-bar::-webkit-scrollbar { display: none; }
-
-    @media (min-width: 769px) {
-      .genre-bar {
-        scrollbar-width: thin;
-        scrollbar-color: #4b5563 #12151d;
-        padding-bottom: 12px;
-      }
-      .genre-bar::-webkit-scrollbar {
-        display: block;
-        height: 6px;
-      }
-      .genre-bar::-webkit-scrollbar-track {
-        background: #12151d;
-        border-radius: 3px;
-      }
-      .genre-bar::-webkit-scrollbar-thumb {
-        background: #4b5563;
-        border-radius: 3px;
-      }
-      .genre-bar::-webkit-scrollbar-thumb:hover {
-        background: var(--primary);
-      }
-    }
-
-    .genre-chip {
-      background: var(--surface-color);
-      color: var(--text-muted);
-      font-size: 12px;
-      font-weight: 600;
-      padding: 8px 16px;
-      border-radius: 8px;
-      border: 1px solid var(--card-border);
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.2s ease;
-    }
-    .genre-chip:hover, .genre-chip.active {
-      background: var(--primary);
-      color: #ffffff;
-      border-color: var(--primary);
-      transform: translateY(-1px);
-    }
-
-    .main-content {
-      flex: 1;
-      max-width: 1400px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 24px 32px;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 20px;
-    }
-
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      overflow: hidden;
-      cursor: pointer;
-      position: relative;
-      display: flex;
-      flex-direction: column;
-      text-decoration: none;
-      color: inherit;
-      outline: none;
-      transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
-    }
-    .card:hover {
-      border-color: var(--primary);
-      transform: translateY(-4px);
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
-    }
+    .genre-container { max-width: 1250px; margin: 12px auto 0; padding: 0 20px; width: 100%; display: flex; align-items: center; gap: 6px; }
+    .scroll-btn { background: var(--surface); color: var(--text); border: 1px solid var(--border); width: 28px; height: 28px; border-radius: 4px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .scroll-btn:hover { background: var(--primary); border-color: var(--primary); }
+    .genre-bar { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 4px; scroll-behavior: smooth; scrollbar-width: thin; scrollbar-color: #444 var(--surface); flex: 1; }
+    .genre-bar::-webkit-scrollbar { height: 4px; }
+    .genre-bar::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+    .chip { background: var(--surface); color: var(--muted); font-size: 10px; font-weight: 600; padding: 5px 10px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+    .chip.active, .chip:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
     
-    .card:focus, .card:focus-visible {
-      border-color: var(--primary);
-      box-shadow: 0 0 0 3px var(--primary);
-      z-index: 10;
-    }
+    .main { flex: 1; max-width: 1250px; width: 100%; margin: 0 auto; padding: 16px 20px; }
+    
+    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; }
+    @media (max-width: 1024px) { .grid { grid-template-columns: repeat(4, 1fr); } }
+    @media (max-width: 768px) { .grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 480px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 
-    .card-poster {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 2/3;
-      background: #12151d;
-      overflow: hidden;
-    }
-    .card-poster img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      transition: transform 0.3s ease;
-    }
-    .card:hover .card-poster img {
-      transform: scale(1.03);
-    }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
+    .card:hover { border-color: var(--primary); }
+    .poster-wrap { position: relative; width: 100%; aspect-ratio: 2/3; background: #0a0a0a; }
+    .poster-wrap img { width: 100%; height: 100%; object-fit: cover; content-visibility: auto; }
+    .badge-q { position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.85); color: #38bdf8; font-size: 9px; font-weight: bold; padding: 2px 5px; border-radius: 2px; }
+    .badge-r { position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.85); color: var(--star); font-size: 9px; font-weight: bold; padding: 2px 5px; border-radius: 2px; }
+    .card-body { padding: 8px; display: flex; flex-direction: column; flex: 1; }
+    .card-title { font-size: 11px; font-weight: bold; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px; }
+    .card-meta { font-size: 10px; color: var(--muted); display: flex; justify-content: space-between; margin-top: auto; }
+    
+    .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; margin: 20px 0; flex-wrap: wrap; }
+    .p-btn { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 6px 10px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; }
+    .p-btn:hover:not(:disabled), .p-btn.active { background: var(--primary); border-color: var(--primary); }
+    .p-btn:disabled { opacity: 0.3; cursor: not-allowed; }
 
-    .badge-quality {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      background: rgba(11, 12, 16, 0.85);
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: #38bdf8;
-      font-size: 10px;
-      font-weight: 800;
-      padding: 3px 7px;
-      border-radius: 4px;
-      text-transform: uppercase;
-    }
-    .badge-rating {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      background: rgba(11, 12, 16, 0.85);
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      color: var(--star-color);
-      font-size: 11px;
-      font-weight: 800;
-      padding: 3px 8px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      gap: 3px;
-    }
-
-    .card-info {
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-    }
-    .card-title {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text-main);
-      line-height: 1.4;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      margin-bottom: 8px;
-    }
-    .card-meta {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-weight: 600;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-top: auto;
-    }
-
-    .skeleton-card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 12px;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    .skeleton-poster {
-      width: 100%;
-      aspect-ratio: 2/3;
-      background: #181b26;
-    }
-    .skeleton-info {
-      padding: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .skeleton-title {
-      height: 14px;
-      width: 80%;
-      background: #1e2230;
-      border-radius: 4px;
-    }
-    .skeleton-meta {
-      height: 10px;
-      width: 50%;
-      background: #1e2230;
-      border-radius: 4px;
-    }
-    .skeleton-shimmer {
-      position: relative;
-      overflow: hidden;
-    }
-    .skeleton-shimmer::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      left: 0;
-      transform: translateX(-100%);
-      background-image: linear-gradient(90deg, rgba(255,255,255,0) 0, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0) 100%);
-      animation: shimmer 1.4s infinite;
-    }
-    @keyframes shimmer {
-      100% {
-        transform: translateX(100%);
-      }
-    }
-
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: var(--overlay-bg);
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      z-index: 1000;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      opacity: 0;
-      transition: opacity 0.25s ease;
-    }
-    .modal-overlay.open {
-      display: flex;
-      opacity: 1;
-    }
-    .modal-card {
-      background: var(--surface-color);
-      border: 1px solid var(--card-border);
-      border-radius: 16px;
-      max-width: 720px;
-      width: 100%;
-      max-height: 90vh;
-      overflow-y: auto;
-      position: relative;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
-      transform: scale(0.95);
-      transition: transform 0.25s ease;
-      scrollbar-width: thin;
-      scrollbar-color: #4b5563 var(--surface-color);
-    }
-    .modal-overlay.open .modal-card {
-      transform: scale(1);
-    }
-    .modal-close {
-      position: absolute;
-      top: 14px;
-      right: 16px;
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid var(--card-border);
-      color: var(--text-main);
-      font-size: 20px;
-      width: 34px;
-      height: 34px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      z-index: 10;
-      transition: all 0.2s ease;
-    }
-    .modal-close:hover {
-      background: var(--primary);
-      border-color: var(--primary);
-    }
-    .modal-body {
-      display: flex;
-      gap: 24px;
-      padding: 24px;
-    }
-    .modal-poster-wrap {
-      width: 220px;
-      flex-shrink: 0;
-      border-radius: 10px;
-      overflow: hidden;
-      aspect-ratio: 2/3;
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-    }
-    .modal-poster-wrap img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .modal-details {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .modal-title {
-      font-size: 20px;
-      font-weight: 800;
-      color: var(--text-main);
-      line-height: 1.3;
-      padding-right: 32px;
-    }
-    .modal-badges {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .modal-meta-tag {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      color: var(--text-muted);
-      font-size: 11px;
-      font-weight: 700;
-      padding: 4px 10px;
-      border-radius: 4px;
-    }
-    .modal-info-row {
-      font-size: 12px;
-      line-height: 1.5;
-      display: flex;
-      gap: 6px;
-    }
-    .info-label {
-      color: var(--text-muted);
-      font-weight: 700;
-      min-width: 65px;
-    }
-    .info-val {
-      color: var(--text-main);
-      font-weight: 500;
-    }
-    .modal-desc {
-      font-size: 13px;
-      color: var(--text-muted);
-      line-height: 1.6;
-      margin-top: 4px;
-      display: -webkit-box;
-      -webkit-line-clamp: 5;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .modal-actions {
-      margin-top: auto;
-      display: flex;
-      gap: 12px;
-      padding-top: 14px;
-    }
-    .btn-play {
-      background: var(--primary);
-      color: #ffffff;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background 0.2s ease;
-      flex: 1;
-      text-align: center;
-    }
-    .btn-play:hover {
-      background: var(--primary-hover);
-    }
-    .btn-secondary {
-      background: var(--card-bg);
-      color: var(--text-main);
-      border: 1px solid var(--card-border);
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .btn-secondary:hover {
-      border-color: var(--text-muted);
-    }
-
-    .empty-state {
-      text-align: center;
-      padding: 80px 20px;
-      color: var(--text-muted);
-      font-weight: 600;
-      font-size: 14px;
-      grid-column: 1 / -1;
-    }
-
-    @media (max-width: 768px) {
-      header { padding: 12px 16px; }
-      .genre-bar-container, .main-content { padding-left: 16px; padding-right: 16px; }
-      .header-container { flex-direction: column; align-items: stretch; gap: 12px; }
-      .brand-row { width: 100%; display: flex; align-items: center; justify-content: space-between; }
-      .controls-group { flex-wrap: nowrap; width: 100%; max-width: 100%; gap: 6px; }
-      .select-input { max-width: 110px; font-size: 11px; padding: 8px 6px; }
-      .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
-      .modal-body { flex-direction: column; padding: 18px; }
-      .modal-poster-wrap { width: 100%; max-width: 160px; margin: 0 auto; }
-      .modal-title { font-size: 17px; text-align: center; padding-right: 0; }
-      .modal-badges { justify-content: center; }
-    }
-
-    @media (max-width: 480px) {
-      .grid { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); gap: 8px; }
-      .card-info { padding: 8px; }
-      .card-title { font-size: 11px; }
-      .card-meta { font-size: 10px; }
-      .search-wrap { min-width: 120px; }
-    }
-
-    .select-input:focus-visible, .genre-chip:focus-visible, .btn-play:focus-visible {
-      outline: 2px solid var(--primary);
-    }
+    /* Modal Pop-up Diperbesar & Proporsional di PC/Debian/Windows/HP */
+    .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.88); z-index: 1000; display: none; align-items: center; justify-content: center; padding: 16px; }
+    .modal.open { display: flex; }
+    .modal-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; max-width: 650px; width: 100%; max-height: 85vh; overflow-y: auto; position: relative; padding: 24px; box-shadow: 0 15px 30px rgba(0,0,0,0.8); }
+    .modal-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: #fff; font-size: 22px; cursor: pointer; }
+    .modal-content { display: flex; gap: 20px; flex-wrap: wrap; }
+    .modal-img { width: 180px; aspect-ratio: 2/3; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0; border: 1px solid var(--border); }
+    .modal-img img { width: 100%; height: 100%; object-fit: cover; }
+    .modal-info { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 220px; }
+    .modal-h { font-size: 18px; font-weight: bold; line-height: 1.3; }
+    .modal-desc { font-size: 12px; color: var(--muted); line-height: 1.5; max-height: 180px; overflow-y: auto; padding-right: 4px; }
+    .btn-play { background: var(--primary); color: #fff; border: none; padding: 10px 18px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; margin-top: 6px; align-self: flex-start; transition: background 0.2s; }
+    .btn-play:hover { background: #ff1e27; }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="header-container">
-    <div class="brand-row">
-      <a href="/" class="logo">
-        NIME<span>STREAM</span>
-      </a>
-      <span class="count-pill" id="countPill">0 Film</span>
+  <div class="h-container">
+    <div class="brand">
+      <a href="/" class="logo">Nime<span>Lite</span></a>
+      <div class="counter" id="totalCounter">0 Film</div>
     </div>
-
-    <div class="controls-group">
-      <div class="search-wrap">
-        <input class="search-input" id="search" placeholder="Cari film, genre, actor..." oninput="handleSearch()">
-      </div>
-
-      <select class="select-input" id="qualitySelect" onchange="fetchAndRender()">
-        <option value="All">Kualitas: Semua</option>
+    <div class="controls">
+      <input class="search-input" id="search" placeholder="Cari film, genre, aktor..." oninput="handleSearch()">
+      <select class="select-input" id="qualitySelect" onchange="changePage(1)">
+        <option value="All">Kualitas</option>
       </select>
-
-      <select class="select-input" id="sortSelect" onchange="fetchAndRender()">
-        <option value="default">Urutkan: Default</option>
-        <option value="rating_desc">Rating Tertinggi</option>
-        <option value="votes_desc">Paling Populer</option>
-        <option value="year_desc">Tahun Terbaru</option>
-        <option value="title_asc">Abjad A-Z</option>
+      <select class="select-input" id="sortSelect" onchange="changePage(1)">
+        <option value="default">Acak (Default)</option>
+        <option value="rating_desc">Rating</option>
+        <option value="votes_desc">Populer</option>
+        <option value="year_desc">Tahun</option>
+        <option value="title_asc">A-Z</option>
       </select>
     </div>
   </div>
 </header>
 
-<div class="genre-bar-container">
+<div class="genre-container">
+  <button class="scroll-btn" onclick="scrollGenre(-200)">‹</button>
   <div class="genre-bar" id="genreBar">
-    <button class="genre-chip active" onclick="setGenre('All', this)">Semua Genre</button>
+    <button class="chip active" onclick="setGenre('All', this)">Semua</button>
   </div>
+  <button class="scroll-btn" onclick="scrollGenre(200)">›</button>
 </div>
 
-<main class="main-content">
+<main class="main">
+  <div class="pagination" id="pagTop"></div>
   <div class="grid" id="grid"></div>
+  <div class="pagination" id="pagBot"></div>
 </main>
 
-<div class="modal-overlay" id="detailModal" onclick="handleBackdropClick(event)">
-  <div class="modal-card">
-    <button class="modal-close" onclick="closeModal()" aria-label="Tutup">&times;</button>
-    <div class="modal-body">
-      <div class="modal-poster-wrap">
-        <img id="modalPoster" src="" alt="Poster Film">
-      </div>
-      <div class="modal-details">
-        <h2 id="modalTitle" class="modal-title"></h2>
-        <div class="modal-badges">
-          <span class="modal-meta-tag" id="modalQuality" style="color: #38bdf8;"></span>
-          <span class="modal-meta-tag" id="modalRating" style="color: var(--star-color);"></span>
-          <span class="modal-meta-tag" id="modalYear"></span>
-          <span class="modal-meta-tag" id="modalDuration"></span>
-        </div>
-        <div class="modal-info-row">
-          <span class="info-label">Genre:</span>
-          <span class="info-val" id="modalGenre"></span>
-        </div>
-        <div class="modal-info-row">
-          <span class="info-label">Sutradara:</span>
-          <span class="info-val" id="modalDirector"></span>
-        </div>
-        <div class="modal-info-row">
-          <span class="info-label">Pemeran:</span>
-          <span class="info-val" id="modalActors"></span>
-        </div>
-        <p class="modal-desc" id="modalDescription"></p>
-        <div class="modal-actions">
-          <button class="btn-play" id="modalWatchBtn">Nonton Sekarang</button>
-          <button class="btn-secondary" onclick="closeModal()">Tutup</button>
-        </div>
+<div class="modal" id="modal" onclick="closeModalBg(event)">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <div class="modal-content">
+      <div class="modal-img"><img id="mImg" src=""></div>
+      <div class="modal-info">
+        <div class="modal-h" id="mTitle"></div>
+        <div style="font-size: 12px; color: #38bdf8; font-weight: 600;" id="mMeta"></div>
+        <div class="modal-desc" id="mDesc"></div>
+        <button class="btn-play" id="mBtn">Nonton Film</button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-var currentGenre = 'All';
+let curGenre = 'All';
+let curPage = 1;
+let searchTimer;
 
 async function init() {
-  renderSkeleton();
-  await Promise.all([loadGenres(), loadQualities()]);
-  await fetchAndRender();
+  await loadFilters();
+  await fetchFilms();
 }
 
-async function loadGenres() {
+function scrollGenre(offset) {
+  document.getElementById('genreBar').scrollBy({ left: offset, behavior: 'smooth' });
+}
+
+async function loadFilters() {
   try {
-    var res = await fetch('/api/genres');
-    var genres = await res.json();
-    var genreBar = document.getElementById('genreBar');
-    
-    genres.forEach(function(g) {
-      var btn = document.createElement('button');
-      btn.className = 'genre-chip';
+    const [gRes, qRes] = await Promise.all([fetch('/api/genres'), fetch('/api/qualities')]);
+    const genres = await gRes.json();
+    const qualities = await qRes.json();
+
+    const bar = document.getElementById('genreBar');
+    genres.forEach(g => {
+      const btn = document.createElement('button');
+      btn.className = 'chip';
       btn.textContent = g;
-      btn.onclick = function() { setGenre(g, btn); };
-      genreBar.appendChild(btn);
+      btn.onclick = () => setGenre(g, btn);
+      bar.appendChild(btn);
     });
-  } catch(e) {
-    console.error('Failed to load genres', e);
-  }
-}
 
-async function loadQualities() {
-  try {
-    var res = await fetch('/api/qualities');
-    var qualities = await res.json();
-    var qualitySelect = document.getElementById('qualitySelect');
-    
-    qualities.forEach(function(q) {
-      var opt = document.createElement('option');
+    const qSelect = document.getElementById('qualitySelect');
+    qualities.forEach(q => {
+      const opt = document.createElement('option');
       opt.value = q;
       opt.textContent = q;
-      qualitySelect.appendChild(opt);
+      qSelect.appendChild(opt);
     });
-  } catch(e) {
-    console.error('Failed to load qualities', e);
-  }
+  } catch(e) {}
 }
 
-function setGenre(genre, element) {
-  currentGenre = genre;
-  document.querySelectorAll('.genre-chip').forEach(function(el) { el.classList.remove('active'); });
-  element.classList.add('active');
-  fetchAndRender();
+function setGenre(g, el) {
+  curGenre = g;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  changePage(1);
 }
 
-var searchTimer;
 function handleSearch() {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(function() {
-    fetchAndRender();
-  }, 200);
+  searchTimer = setTimeout(() => changePage(1), 200);
 }
 
-function renderSkeleton() {
-  var grid = document.getElementById('grid');
-  grid.innerHTML = '';
-  for (var i = 0; i < 12; i++) {
-    var card = document.createElement('div');
-    card.className = 'skeleton-card';
-    
-    var poster = document.createElement('div');
-    poster.className = 'skeleton-poster skeleton-shimmer';
-    
-    var info = document.createElement('div');
-    info.className = 'skeleton-info';
-    
-    var title = document.createElement('div');
-    title.className = 'skeleton-title skeleton-shimmer';
-    
-    var meta = document.createElement('div');
-    meta.className = 'skeleton-meta skeleton-shimmer';
-    
-    info.appendChild(title);
-    info.appendChild(meta);
-    card.appendChild(poster);
-    card.appendChild(info);
-    grid.appendChild(card);
-  }
+function changePage(p) {
+  curPage = p;
+  fetchFilms();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-async function fetchAndRender() {
-  renderSkeleton();
-  var q = document.getElementById('search').value.trim();
-  var sort = document.getElementById('sortSelect').value;
-  var quality = document.getElementById('qualitySelect').value;
-  
-  var params = new URLSearchParams();
+async function fetchFilms() {
+  const q = document.getElementById('search').value.trim();
+  const sort = document.getElementById('sortSelect').value;
+  const quality = document.getElementById('qualitySelect').value;
+
+  const params = new URLSearchParams({ page: curPage, limit: 20 });
   if (q) params.append('q', q);
-  if (currentGenre !== 'All') params.append('genre', currentGenre);
+  if (curGenre !== 'All') params.append('genre', curGenre);
   if (quality !== 'All') params.append('quality', quality);
   if (sort !== 'default') params.append('sort', sort);
 
   try {
-    var res = await fetch('/api/films?' + params.toString());
-    var films = await res.json();
-    renderGrid(films);
-  } catch (err) {
-    document.getElementById('grid').innerHTML = '<div class="empty-state">Gagal terhubung ke server</div>';
-  }
-}
+    const res = await fetch('/api/films?' + params.toString());
+    const json = await res.json();
+    
+    document.getElementById('totalCounter').textContent = json.totalItems + ' Film';
 
-function renderGrid(list) {
-  var grid = document.getElementById('grid');
-  document.getElementById('countPill').textContent = (list ? list.length : 0) + ' Film';
+    const grid = document.getElementById('grid');
+    grid.innerHTML = '';
+    const frag = document.createDocumentFragment();
 
-  if (!list || list.length === 0) {
-    grid.innerHTML = '<div class="empty-state">Film tidak ditemukan</div>';
-    return;
-  }
-
-  grid.innerHTML = '';
-
-  for (var i = 0; i < list.length; i++) {
-    (function(f) {
-      var poster = f.image || 'https://via.placeholder.com/200x300/181a24/9ca3af?text=No+Poster';
-      var rating = (f.rating && f.rating !== '0' && f.rating !== 0) ? f.rating : '-';
-      var quality = f.quality || 'HD';
-      var year = f.year || '-';
-      var duration = f.duration || 'N/A';
-
-      var card = document.createElement('div');
-      card.className = 'card';
-      card.tabIndex = 0;
-      card.setAttribute('role', 'button');
-      card.setAttribute('aria-label', f.title || 'Film');
-
-      card.onclick = function() {
-        openDetailModal(f);
-      };
-
-      card.onkeydown = function(e) {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          openDetailModal(f);
-        }
-      };
-
-      card.onfocus = function() {
-        card.scrollIntoView({ behavior: 'auto', block: 'nearest' });
-      };
-
-      var posterDiv = document.createElement('div');
-      posterDiv.className = 'card-poster';
-
-      var img = document.createElement('img');
-      img.src = poster;
-      img.alt = f.title || '';
-      img.loading = 'lazy';
-      img.onerror = function() {
-        this.src = 'https://via.placeholder.com/200x300/181a24/9ca3af?text=Error';
-      };
-
-      var qualitySpan = document.createElement('span');
-      qualitySpan.className = 'badge-quality';
-      qualitySpan.textContent = quality;
-
-      var ratingSpan = document.createElement('span');
-      ratingSpan.className = 'badge-rating';
-      ratingSpan.textContent = rating;
-
-      posterDiv.appendChild(img);
-      posterDiv.appendChild(qualitySpan);
-      posterDiv.appendChild(ratingSpan);
-
-      var infoDiv = document.createElement('div');
-      infoDiv.className = 'card-info';
-
-      var titleDiv = document.createElement('div');
-      titleDiv.className = 'card-title';
-      titleDiv.textContent = f.title || 'Untitled';
-
-      var metaDiv = document.createElement('div');
-      metaDiv.className = 'card-meta';
-
-      var yearSpan = document.createElement('span');
-      yearSpan.textContent = year;
-
-      var durationSpan = document.createElement('span');
-      durationSpan.textContent = duration;
-
-      metaDiv.appendChild(yearSpan);
-      metaDiv.appendChild(durationSpan);
-
-      infoDiv.appendChild(titleDiv);
-      infoDiv.appendChild(metaDiv);
-
-      card.appendChild(posterDiv);
-      card.appendChild(infoDiv);
-
-      grid.appendChild(card);
-    })(list[i]);
-  }
-}
-
-function openDetailModal(film) {
-  var modal = document.getElementById('detailModal');
-  document.getElementById('modalPoster').src = film.image || 'https://via.placeholder.com/300x450/181a24/9ca3af?text=No+Poster';
-  document.getElementById('modalTitle').textContent = film.title || 'Untitled';
-  document.getElementById('modalRating').textContent = (film.rating && film.rating !== '0' && film.rating !== 0) ? '★ ' + film.rating : '★ -';
-  document.getElementById('modalQuality').textContent = film.quality || 'HD';
-  document.getElementById('modalYear').textContent = film.year || '-';
-  document.getElementById('modalDuration').textContent = film.duration || '-';
-  document.getElementById('modalGenre').textContent = film.genre || '-';
-  document.getElementById('modalDirector').textContent = film.director || '-';
-  document.getElementById('modalActors').textContent = Array.isArray(film.actors) ? film.actors.join(', ') : (film.actors || '-');
-  document.getElementById('modalDescription').textContent = film.description || film.synopsis || 'Deskripsi film belum tersedia untuk judul ini.';
-  
-  var watchBtn = document.getElementById('modalWatchBtn');
-  var targetUrl = film.url || (film.servers && film.servers[0] ? film.servers[0].url : '#');
-  
-  watchBtn.onclick = function() {
-    if (targetUrl && targetUrl !== '#') {
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    if (json.data.length === 0) {
+      grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #777; padding: 40px;">Film tidak ditemukan</div>';
+      document.getElementById('pagTop').innerHTML = '';
+      document.getElementById('pagBot').innerHTML = '';
+      return;
     }
-  };
+
+    json.data.forEach(f => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.onclick = () => openModal(f);
+
+      card.innerHTML = \`
+        <div class="poster-wrap">
+          <img src="\${f.image || ''}" loading="lazy" alt="">
+          <span class="badge-q">\${f.quality || 'HD'}</span>
+          <span class="badge-r">\${f.rating ? '★ ' + f.rating : ''}</span>
+        </div>
+        <div class="card-body">
+          <div class="card-title">\${f.title}</div>
+          <div class="card-meta">
+            <span>\${f.year || ''}</span>
+            <span>\${f.duration || ''}</span>
+          </div>
+        </div>
+      \`;
+      frag.appendChild(card);
+    });
+
+    grid.appendChild(frag);
+    renderPags(json.currentPage, json.totalPages);
+  } catch(e) {}
+}
+
+function renderPags(curr, total) {
+  const top = document.getElementById('pagTop');
+  const bot = document.getElementById('pagBot');
+  top.innerHTML = '';
+  bot.innerHTML = '';
+  if (total <= 1) return;
+
+  const html = buildPagHTML(curr, total);
+  top.innerHTML = html;
+  bot.innerHTML = html;
+}
+
+function buildPagHTML(curr, total) {
+  let html = \`<button class="p-btn" \${curr === 1 ? 'disabled' : ''} onclick="changePage(\${curr - 1})">«</button>\`;
+  let start = Math.max(1, curr - 2);
+  let end = Math.min(total, curr + 2);
+
+  if (start > 1) {
+    html += \`<button class="p-btn" onclick="changePage(1)">1</button>\`;
+    if (start > 2) html += \`<span style="color:#555">..</span>\`;
+  }
+  for (let i = start; i <= end; i++) {
+    html += \`<button class="p-btn \${i === curr ? 'active' : ''}" onclick="changePage(\${i})">\${i}</button>\`;
+  }
+  if (end < total) {
+    if (end < total - 1) html += \`<span style="color:#555">..</span>\`;
+    html += \`<button class="p-btn" onclick="changePage(\${total})">\${total}</button>\`;
+  }
+  html += \`<button class="p-btn" \${curr === total ? 'disabled' : ''} onclick="changePage(\${curr + 1})">»</button>\`;
+  return html;
+}
+
+function openModal(f) {
+  document.getElementById('mImg').src = f.image || '';
+  document.getElementById('mTitle').textContent = f.title || '';
+  document.getElementById('mMeta').textContent = \`Genre: \${f.genre || '-'} | Tahun: \${f.year || '-'}\`;
+  document.getElementById('mDesc').textContent = f.description || 'Tidak ada deskripsi.';
   
-  modal.classList.add('open');
-  document.body.style.overflow = 'hidden';
+  const btn = document.getElementById('mBtn');
+  const url = f.url || (f.servers && f.servers[0] ? f.servers[0].url : '#');
+  btn.onclick = () => { if (url !== '#') window.open(url, '_blank'); };
+  document.getElementById('modal').classList.add('open');
 }
 
-function closeModal() {
-  var modal = document.getElementById('detailModal');
-  modal.classList.remove('open');
-  document.body.style.overflow = '';
-}
-
-function handleBackdropClick(event) {
-  if (event.target.id === 'detailModal') {
-    closeModal();
-  }
-}
-
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') {
-    closeModal();
-  }
-});
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function closeModalBg(e) { if (e.target.id === 'modal') closeModal(); }
 
 init();
 </script>
@@ -1032,9 +397,5 @@ init();
 });
 
 app.listen(PORT, () => {
-  console.log('[SERVER] NimeStream Server running on http://localhost:' + PORT);
-  console.log('[API] Endpoints available:');
-  console.log('  - GET /api/films');
-  console.log('  - GET /api/genres');
-  console.log('  - GET /api/qualities');
+  console.log('Server running on port ' + PORT);
 });
