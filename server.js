@@ -51,6 +51,16 @@ function getUniqueGenres() {
   return Array.from(genresSet).sort();
 }
 
+function getUniqueQualities() {
+  const qualitiesSet = new Set();
+  filmsData.forEach(film => {
+    if (film.quality && film.quality !== 'Unknown') {
+      qualitiesSet.add(film.quality.trim());
+    }
+  });
+  return Array.from(qualitiesSet).sort();
+}
+
 app.get('/api/films', (req, res) => {
   let results = [...filmsData];
   const { q, genre, sort, quality } = req.query;
@@ -100,6 +110,10 @@ app.get('/api/genres', (req, res) => {
   res.json(getUniqueGenres());
 });
 
+app.get('/api/qualities', (req, res) => {
+  res.json(getUniqueQualities());
+});
+
 app.get('/', (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="id">
@@ -118,6 +132,7 @@ app.get('/', (req, res) => {
       --text-main: #f9fafb;
       --text-muted: #9ca3af;
       --star-color: #fbbf24;
+      --overlay-bg: rgba(4, 5, 7, 0.82);
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -177,10 +192,11 @@ app.get('/', (req, res) => {
     .controls-group {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       flex: 1;
-      max-width: 680px;
+      max-width: 760px;
       justify-content: flex-end;
+      flex-wrap: wrap;
     }
 
     .search-wrap {
@@ -247,7 +263,6 @@ app.get('/', (req, res) => {
     }
     .genre-bar::-webkit-scrollbar { display: none; }
 
-    /* PC Scrollbar Styles */
     @media (min-width: 769px) {
       .genre-bar {
         scrollbar-width: thin;
@@ -405,6 +420,228 @@ app.get('/', (req, res) => {
       margin-top: auto;
     }
 
+    .skeleton-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .skeleton-poster {
+      width: 100%;
+      aspect-ratio: 2/3;
+      background: #181b26;
+    }
+    .skeleton-info {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .skeleton-title {
+      height: 14px;
+      width: 80%;
+      background: #1e2230;
+      border-radius: 4px;
+    }
+    .skeleton-meta {
+      height: 10px;
+      width: 50%;
+      background: #1e2230;
+      border-radius: 4px;
+    }
+    .skeleton-shimmer {
+      position: relative;
+      overflow: hidden;
+    }
+    .skeleton-shimmer::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      transform: translateX(-100%);
+      background-image: linear-gradient(90deg, rgba(255,255,255,0) 0, rgba(255,255,255,0.06) 50%, rgba(255,255,255,0) 100%);
+      animation: shimmer 1.4s infinite;
+    }
+    @keyframes shimmer {
+      100% {
+        transform: translateX(100%);
+      }
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--overlay-bg);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .modal-overlay.open {
+      display: flex;
+      opacity: 1;
+    }
+    .modal-card {
+      background: var(--surface-color);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      max-width: 720px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      transform: scale(0.95);
+      transition: transform 0.25s ease;
+      scrollbar-width: thin;
+      scrollbar-color: #4b5563 var(--surface-color);
+    }
+    .modal-overlay.open .modal-card {
+      transform: scale(1);
+    }
+    .modal-close {
+      position: absolute;
+      top: 14px;
+      right: 16px;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      font-size: 20px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 10;
+      transition: all 0.2s ease;
+    }
+    .modal-close:hover {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+    .modal-body {
+      display: flex;
+      gap: 24px;
+      padding: 24px;
+    }
+    .modal-poster-wrap {
+      width: 220px;
+      flex-shrink: 0;
+      border-radius: 10px;
+      overflow: hidden;
+      aspect-ratio: 2/3;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+    }
+    .modal-poster-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .modal-details {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .modal-title {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--text-main);
+      line-height: 1.3;
+      padding-right: 32px;
+    }
+    .modal-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .modal-meta-tag {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+    .modal-info-row {
+      font-size: 12px;
+      line-height: 1.5;
+      display: flex;
+      gap: 6px;
+    }
+    .info-label {
+      color: var(--text-muted);
+      font-weight: 700;
+      min-width: 65px;
+    }
+    .info-val {
+      color: var(--text-main);
+      font-weight: 500;
+    }
+    .modal-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-top: 4px;
+      display: -webkit-box;
+      -webkit-line-clamp: 5;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .modal-actions {
+      margin-top: auto;
+      display: flex;
+      gap: 12px;
+      padding-top: 14px;
+    }
+    .btn-play {
+      background: var(--primary);
+      color: #ffffff;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      flex: 1;
+      text-align: center;
+    }
+    .btn-play:hover {
+      background: var(--primary-hover);
+    }
+    .btn-secondary {
+      background: var(--card-bg);
+      color: var(--text-main);
+      border: 1px solid var(--card-border);
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-secondary:hover {
+      border-color: var(--text-muted);
+    }
+
     .empty-state {
       text-align: center;
       padding: 80px 20px;
@@ -419,9 +656,13 @@ app.get('/', (req, res) => {
       .genre-bar-container, .main-content { padding-left: 16px; padding-right: 16px; }
       .header-container { flex-direction: column; align-items: stretch; gap: 12px; }
       .brand-row { width: 100%; display: flex; align-items: center; justify-content: space-between; }
-      .controls-group { flex-wrap: nowrap; width: 100%; max-width: 100%; gap: 8px; }
-      .select-input { max-width: 140px; font-size: 11px; padding: 8px 8px; }
+      .controls-group { flex-wrap: nowrap; width: 100%; max-width: 100%; gap: 6px; }
+      .select-input { max-width: 110px; font-size: 11px; padding: 8px 6px; }
       .grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+      .modal-body { flex-direction: column; padding: 18px; }
+      .modal-poster-wrap { width: 100%; max-width: 160px; margin: 0 auto; }
+      .modal-title { font-size: 17px; text-align: center; padding-right: 0; }
+      .modal-badges { justify-content: center; }
     }
 
     @media (max-width: 480px) {
@@ -429,9 +670,10 @@ app.get('/', (req, res) => {
       .card-info { padding: 8px; }
       .card-title { font-size: 11px; }
       .card-meta { font-size: 10px; }
+      .search-wrap { min-width: 120px; }
     }
 
-    .select-input:focus-visible, .genre-chip:focus-visible {
+    .select-input:focus-visible, .genre-chip:focus-visible, .btn-play:focus-visible {
       outline: 2px solid var(--primary);
     }
   </style>
@@ -452,6 +694,10 @@ app.get('/', (req, res) => {
         <input class="search-input" id="search" placeholder="Cari film, genre, actor..." oninput="handleSearch()">
       </div>
 
+      <select class="select-input" id="qualitySelect" onchange="fetchAndRender()">
+        <option value="All">Kualitas: Semua</option>
+      </select>
+
       <select class="select-input" id="sortSelect" onchange="fetchAndRender()">
         <option value="default">Urutkan: Default</option>
         <option value="rating_desc">Rating Tertinggi</option>
@@ -470,16 +716,52 @@ app.get('/', (req, res) => {
 </div>
 
 <main class="main-content">
-  <div class="grid" id="grid">
-    <div class="empty-state">Memuat katalog film...</div>
-  </div>
+  <div class="grid" id="grid"></div>
 </main>
+
+<div class="modal-overlay" id="detailModal" onclick="handleBackdropClick(event)">
+  <div class="modal-card">
+    <button class="modal-close" onclick="closeModal()" aria-label="Tutup">&times;</button>
+    <div class="modal-body">
+      <div class="modal-poster-wrap">
+        <img id="modalPoster" src="" alt="Poster Film">
+      </div>
+      <div class="modal-details">
+        <h2 id="modalTitle" class="modal-title"></h2>
+        <div class="modal-badges">
+          <span class="modal-meta-tag" id="modalQuality" style="color: #38bdf8;"></span>
+          <span class="modal-meta-tag" id="modalRating" style="color: var(--star-color);"></span>
+          <span class="modal-meta-tag" id="modalYear"></span>
+          <span class="modal-meta-tag" id="modalDuration"></span>
+        </div>
+        <div class="modal-info-row">
+          <span class="info-label">Genre:</span>
+          <span class="info-val" id="modalGenre"></span>
+        </div>
+        <div class="modal-info-row">
+          <span class="info-label">Sutradara:</span>
+          <span class="info-val" id="modalDirector"></span>
+        </div>
+        <div class="modal-info-row">
+          <span class="info-label">Pemeran:</span>
+          <span class="info-val" id="modalActors"></span>
+        </div>
+        <p class="modal-desc" id="modalDescription"></p>
+        <div class="modal-actions">
+          <button class="btn-play" id="modalWatchBtn">Nonton Sekarang</button>
+          <button class="btn-secondary" onclick="closeModal()">Tutup</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 var currentGenre = 'All';
 
 async function init() {
-  await loadGenres();
+  renderSkeleton();
+  await Promise.all([loadGenres(), loadQualities()]);
   await fetchAndRender();
 }
 
@@ -501,6 +783,23 @@ async function loadGenres() {
   }
 }
 
+async function loadQualities() {
+  try {
+    var res = await fetch('/api/qualities');
+    var qualities = await res.json();
+    var qualitySelect = document.getElementById('qualitySelect');
+    
+    qualities.forEach(function(q) {
+      var opt = document.createElement('option');
+      opt.value = q;
+      opt.textContent = q;
+      qualitySelect.appendChild(opt);
+    });
+  } catch(e) {
+    console.error('Failed to load qualities', e);
+  }
+}
+
 function setGenre(genre, element) {
   currentGenre = genre;
   document.querySelectorAll('.genre-chip').forEach(function(el) { el.classList.remove('active'); });
@@ -516,13 +815,43 @@ function handleSearch() {
   }, 200);
 }
 
+function renderSkeleton() {
+  var grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  for (var i = 0; i < 12; i++) {
+    var card = document.createElement('div');
+    card.className = 'skeleton-card';
+    
+    var poster = document.createElement('div');
+    poster.className = 'skeleton-poster skeleton-shimmer';
+    
+    var info = document.createElement('div');
+    info.className = 'skeleton-info';
+    
+    var title = document.createElement('div');
+    title.className = 'skeleton-title skeleton-shimmer';
+    
+    var meta = document.createElement('div');
+    meta.className = 'skeleton-meta skeleton-shimmer';
+    
+    info.appendChild(title);
+    info.appendChild(meta);
+    card.appendChild(poster);
+    card.appendChild(info);
+    grid.appendChild(card);
+  }
+}
+
 async function fetchAndRender() {
+  renderSkeleton();
   var q = document.getElementById('search').value.trim();
   var sort = document.getElementById('sortSelect').value;
+  var quality = document.getElementById('qualitySelect').value;
   
   var params = new URLSearchParams();
   if (q) params.append('q', q);
   if (currentGenre !== 'All') params.append('genre', currentGenre);
+  if (quality !== 'All') params.append('quality', quality);
   if (sort !== 'default') params.append('sort', sort);
 
   try {
@@ -552,8 +881,6 @@ function renderGrid(list) {
       var quality = f.quality || 'HD';
       var year = f.year || '-';
       var duration = f.duration || 'N/A';
-      
-      var targetUrl = f.url || (f.servers && f.servers[0] ? f.servers[0].url : '#');
 
       var card = document.createElement('div');
       card.className = 'card';
@@ -562,17 +889,13 @@ function renderGrid(list) {
       card.setAttribute('aria-label', f.title || 'Film');
 
       card.onclick = function() {
-        if (targetUrl && targetUrl !== '#') {
-          window.open(targetUrl, '_blank', 'noopener,noreferrer');
-        }
+        openDetailModal(f);
       };
 
       card.onkeydown = function(e) {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          if (targetUrl && targetUrl !== '#') {
-            window.open(targetUrl, '_blank', 'noopener,noreferrer');
-          }
+          openDetailModal(f);
         }
       };
 
@@ -633,6 +956,50 @@ function renderGrid(list) {
   }
 }
 
+function openDetailModal(film) {
+  var modal = document.getElementById('detailModal');
+  document.getElementById('modalPoster').src = film.image || 'https://via.placeholder.com/300x450/181a24/9ca3af?text=No+Poster';
+  document.getElementById('modalTitle').textContent = film.title || 'Untitled';
+  document.getElementById('modalRating').textContent = (film.rating && film.rating !== '0' && film.rating !== 0) ? '★ ' + film.rating : '★ -';
+  document.getElementById('modalQuality').textContent = film.quality || 'HD';
+  document.getElementById('modalYear').textContent = film.year || '-';
+  document.getElementById('modalDuration').textContent = film.duration || '-';
+  document.getElementById('modalGenre').textContent = film.genre || '-';
+  document.getElementById('modalDirector').textContent = film.director || '-';
+  document.getElementById('modalActors').textContent = Array.isArray(film.actors) ? film.actors.join(', ') : (film.actors || '-');
+  document.getElementById('modalDescription').textContent = film.description || film.synopsis || 'Deskripsi film belum tersedia untuk judul ini.';
+  
+  var watchBtn = document.getElementById('modalWatchBtn');
+  var targetUrl = film.url || (film.servers && film.servers[0] ? film.servers[0].url : '#');
+  
+  watchBtn.onclick = function() {
+    if (targetUrl && targetUrl !== '#') {
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+  
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  var modal = document.getElementById('detailModal');
+  modal.classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function handleBackdropClick(event) {
+  if (event.target.id === 'detailModal') {
+    closeModal();
+  }
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    closeModal();
+  }
+});
+
 init();
 </script>
 </body>
@@ -644,4 +1011,5 @@ app.listen(PORT, () => {
   console.log('[API] Endpoints available:');
   console.log('  - GET /api/films');
   console.log('  - GET /api/genres');
+  console.log('  - GET /api/qualities');
 });
