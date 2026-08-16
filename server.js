@@ -107,7 +107,7 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NimeLite - Ultra Turbo Lite</title>
+  <title>LK24</title>
   <style>
     :root {
       --bg: #000;
@@ -183,7 +183,7 @@ app.get('/', (req, res) => {
 <header>
   <div class="h-container">
     <div class="brand">
-      <a href="/" class="logo">Nime<span>Lite</span></a>
+      <a href="/" class="logo">FILM<span>24</span></a>
       <div class="counter" id="totalCounter">0 Film</div>
     </div>
     <div class="controls">
