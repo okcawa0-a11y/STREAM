@@ -8,12 +8,37 @@ const PORT = process.env.PORT || 4000;
 const filmsPath = path.join(__dirname, 'films.json');
 let filmsData = [];
 
+// =====================================================
+// PERBAIKAN 1: FILTER SAAT LOAD DATA
+// =====================================================
 function loadFilmsData() {
   try {
     if (fs.existsSync(filmsPath)) {
       const rawData = fs.readFileSync(filmsPath, 'utf8');
-      filmsData = JSON.parse(rawData);
-      console.log('[INFO] Loaded ' + filmsData.length + ' films from films.json');
+      const allFilms = JSON.parse(rawData);
+      
+      // Filter: Hapus film aneh (redirect/drama) saat pertama kali dimuat
+      filmsData = allFilms.filter(film => {
+        const check = (film.title + film.slug + (film.description || '')).toLowerCase();
+        
+        // Kata-kata yang menandakan redirect/drama yang harus dihapus
+        const bannedKeywords = [
+          'nontondrama', 
+          'dialihkan ke', 
+          'redirect', 
+          'house of the dragon',
+          'episode',
+          'season'
+        ];
+        
+        for (let keyword of bannedKeywords) {
+          if (check.includes(keyword)) return false;
+        }
+        return true;
+      });
+
+      console.log('[INFO] Loaded ' + filmsData.length + ' films from films.json (filtered)');
+      console.log('[INFO] Removed ' + (allFilms.length - filmsData.length) + ' redirect/drama entries.');
     } else {
       console.log('[WARN] films.json not found in directory');
       filmsData = [];
